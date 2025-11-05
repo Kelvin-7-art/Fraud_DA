@@ -50,6 +50,7 @@ try:
     st.set_page_config(page_title=" Fraud Detection App", page_icon="Fraud_Detection_App", layout="wide")
 except Exception:
     pass
+
 # --- Sidebar layout & widget polish (fix cramped multiselect) ---
 st.markdown("""
 <style>
@@ -61,34 +62,34 @@ st.markdown("""
 
 /* Make the sidebar content scroll independently (prevents cut-off) */
 section[data-testid="stSidebar"] > div {
-  height: 100vh;            /* full viewport height */
-  overflow-y: auto;         /* scroll if content is tall */
+  height: 100vh;
+  overflow-y: auto;
   padding-right: 8px;
 }
 
 /* Multiselect: allow chips to wrap and not be squashed */
 [data-testid="stSidebar"] div[data-testid="stMultiSelect"] > div > div {
   display: flex;
-  flex-wrap: wrap;          /* <- key: wrap pills to next line */
+  flex-wrap: wrap;
   gap: 6px;
   align-items: center;
-  overflow: visible;        /* make close icons visible */
+  overflow: visible;
 }
 
 /* Tag (chip) styling – readable on dark sidebar */
 [data-testid="stSidebar"] div[data-testid="stMultiSelect"] [data-baseweb="tag"] {
   border-radius: 8px;
   padding: 2px 8px;
-  background: #D94C4C;      /* keep your red look; change to #D4AF37 for gold */
+  background: #D94C4C;
   color: #fff;
   border: none;
 }
 [data-testid="stSidebar"] div[data-testid="stMultiSelect"] [data-baseweb="tag"] svg {
-  fill: #fff;               /* close "x" icon visible */
+  fill: #fff;
 }
 
 /* Inputs: ensure full width and comfortable height */
-[data-testid="stSidebar"] .stNumberInput input, 
+[data-testid="stSidebar"] .stNumberInput input,
 [data-testid="stSidebar"] .stTextInput input {
   height: 38px;
 }
@@ -98,48 +99,55 @@ section[data-testid="stSidebar"] > div {
   z-index: 1000 !important;
 }
 
-/* Optional: sidebar background to match your palette (comment if not needed)
-[data-testid="stSidebar"] {
-  background: #0F2041;
-}
-[data-testid="stSidebar"] label, 
-[data-testid="stSidebar"] p, 
-[data-testid="stSidebar"] span {
-  color: white;
-}
+/* Optional: sidebar background to match your palette
+[data-testid="stSidebar"] { background: #0F2041; }
+[data-testid="stSidebar"] label, [data-testid="stSidebar"] p, [data-testid="stSidebar"] span { color: white; }
 */
 </style>
 """, unsafe_allow_html=True)
+
 st.markdown(
-        """
-        <div style="
-            background: radial-gradient(1200px 300px at -10% -50%, rgba(255,255,255,0.06) 20%, transparent 21%) repeat,
-                        radial-gradient(1200px 300px at 110% 150%, rgba(255,255,255,0.06) 20%, transparent 21%) repeat,
-                        linear-gradient(135deg, #0F2041 0%, #1E3A8A 100%);
-            border-radius: 18px;
-            padding: 28px 32px;
-            color: #FFFFFF;
-            box-shadow: 0 12px 28px rgba(0,0,0,0.12);
-            margin-bottom: 22px;">
-          <div style="font-size: 2rem; font-weight: 800; line-height: 1.2; letter-spacing: .2px;">
-            Transaction Fraud  <span style="color:#D4AF37;">App</span>
-          </div>
-          <div style="height: 1px; background: rgba(255,255,255,0.55); margin: 10px 0 12px 0;"></div>
-          <div style="opacity:.9; font-size: 0.98rem;">
-            Advanced Algorithms for fraud detection.
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
+    """
+    <div style="
+        background: radial-gradient(1200px 300px at -10% -50%, rgba(255,255,255,0.06) 20%, transparent 21%) repeat,
+                    radial-gradient(1200px 300px at 110% 150%, rgba(255,255,255,0.06) 20%, transparent 21%) repeat,
+                    linear-gradient(135deg, #0F2041 0%, #1E3A8A 100%);
+        border-radius: 18px;
+        padding: 28px 32px;
+        color: #FFFFFF;
+        box-shadow: 0 12px 28px rgba(0,0,0,0.12);
+        margin-bottom: 22px;">
+      <div style="font-size: 2rem; font-weight: 800; line-height: 1.2; letter-spacing: .2px;">
+        Transaction Fraud  <span style="color:#D4AF37;">App</span>
+      </div>
+      <div style="height: 1px; background: rgba(255,255,255,0.55); margin: 10px 0 12px 0;"></div>
+      <div style="opacity:.9; font-size: 0.98rem;">
+        Advanced Algorithms for fraud detection.
+      </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 # -------------------- Helpers --------------------
 @st.cache_data(show_spinner=False)
 def load_data(file_or_path):
-    return pd.read_csv(file_or_path) if hasattr(file_or_path, "read") else pd.read_csv(file_or_path)
+    """Robust CSV loader: try default engine, fallback to python engine cleanly."""
+    try:
+        if hasattr(file_or_path, "read"):
+            return pd.read_csv(file_or_path)
+        return pd.read_csv(file_or_path)
+    except Exception:
+        try:
+            if hasattr(file_or_path, "seek"):
+                try:
+                    file_or_path.seek(0)
+                except Exception:
+                    pass
+            return pd.read_csv(file_or_path, engine="python")
+        except Exception as e2:
+            raise e2
 
 def detect_schema(df: pd.DataFrame):
     has_pca = ("Class" in df.columns) and any(re.fullmatch(r"V\d+", c) for c in df.columns)
@@ -353,6 +361,7 @@ def show_feature_importance(pipeline, X, y):
             ax.set_title("Top Feature Importance")
             ax.set_xlabel("Importance"); ax.set_ylabel("Feature")
             st.pyplot(fig)
+        plt.close('all')
 
         with st.expander("Show full importance table"):
             st.dataframe(imp_df.reset_index(drop=True), use_container_width=True)
@@ -389,6 +398,7 @@ def show_correlation_matrix(schema_name: str, X: pd.DataFrame):
     ax.set_title("Correlation Matrix")
     plt.tight_layout()
     st.pyplot(fig)
+    plt.close(fig)
 
 
 # -------------------- SIDEBAR: Data & Settings --------------------
@@ -442,7 +452,10 @@ except Exception as e:
 st.success("Data loaded")
 with st.expander("Data preview", expanded=False):
     st.dataframe(df.head(10), use_container_width=True)
-    st.write(df.describe(include="all").transpose())
+    try:
+        st.write(df.describe(include="all").transpose())
+    except Exception:
+        st.write(df.describe().transpose())
 
 # Detect/override schema
 schema_name, target_col = detect_schema(df)
@@ -530,6 +543,7 @@ if classifier == "Random Forest":
 
 elif classifier == "Logistic Regression":
     lr_kwargs = dict(C=float(C), max_iter=int(max_iter), class_weight=cw, solver=solver)
+    # n_jobs supported for liblinear and saga
     if solver in ("saga", "liblinear"):
         lr_kwargs["n_jobs"] = -1
     clf = LogisticRegression(**lr_kwargs)
