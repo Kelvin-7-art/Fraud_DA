@@ -41,7 +41,6 @@ def _resolve_any(rel_path: str) -> Optional[str]:
     candidates = []
     for root in candidates_roots:
         candidates.append(root / rel_path)
-        # also try with backslash-friendly variant automatically covered by Path
 
     for p in candidates:
         try:
@@ -52,20 +51,27 @@ def _resolve_any(rel_path: str) -> Optional[str]:
     return None
 
 
-def _first_existing(paths: list[str]) -> Optional[str]:
+def _first_existing(paths: List[Optional[str]]) -> Optional[str]:
     """Return the first existing path from a list (absolute or relative)."""
     for p in paths:
         if not p:
             continue
-        # absolute allowed
         pp = Path(p)
         if pp.is_absolute() and pp.exists():
             return str(pp)
-        # try as relative via resolver
         hit = _resolve_any(p)
         if hit:
             return hit
     return None
+
+
+def _join_parent_safely(n: int, *parts: str) -> Optional[str]:
+    """Safely join __file__.parents[n] with parts; return None if parent missing."""
+    try:
+        base = Path(__file__).resolve().parents[n]
+        return str(base.joinpath(*parts))
+    except IndexError:
+        return None
 
 
 # ---------- Loading helpers ----------
@@ -78,8 +84,14 @@ def _load_pipeline(src: Union[str, io.BufferedReader, io.BytesIO]):
     Load from a path or a file-like object (for uploaded files).
     Not cached for file-like objects (they are not hashable).
     """
+    # Streamlit UploadedFile or any file-like object
+    if hasattr(src, "read"):
+        data = src.read()
+        return joblib.load(io.BytesIO(data))
+    # BytesIO / BufferedReader
     if isinstance(src, (io.BufferedReader, io.BytesIO)):
         return joblib.load(src)
+    # String/Path
     return _load_pipeline_from_path(str(src))
 
 
@@ -318,12 +330,11 @@ def transaction_predictor():
         # Add risk score influence across multiple features for more realistic patterns
         risk_multiplier = risk_score / 10.0  # Normalize to -1.0 to 1.0 range
         for i in range(28):
-            # Distribute risk effect across all features with varying weights
-            if i % 3 == 0:  # Every 3rd feature gets stronger influence
+            if i % 3 == 0:      # stronger influence
                 pca_features[i] += risk_multiplier * 2.0
-            elif i % 2 == 0:  # Every 2nd feature gets medium influence
+            elif i % 2 == 0:    # medium influence
                 pca_features[i] += risk_multiplier * 1.5
-            else:  # Others get lower influence
+            else:               # lower influence
                 pca_features[i] += risk_multiplier * 0.8
 
         # Apply stronger influence to key features
@@ -341,29 +352,34 @@ def transaction_predictor():
         # Environment-variable overrides if you want (optional)
         env_raw = os.getenv("FRAUD_RAW_PIPE")
         env_pca = os.getenv("FRAUD_PCA_PIPE")
+        # Optional: secrets overrides (won't error if not set)
+        try:
+            secret_raw = st.secrets.get("FRAUD_RAW_PIPE", None)
+            secret_pca = st.secrets.get("FRAUD_PCA_PIPE", None)
+        except Exception:
+            secret_raw = secret_pca = None
 
         # Candidates for both
         RAW_PIPE = _first_existing(
             [
-                env_raw,
+                secret_raw, env_raw,
                 "assets/fraud_detection_pipeline.pkl",
                 "models/fraud_detection_pipeline.pkl",
                 "Fraud Detection/assets/fraud_detection_pipeline.pkl",
                 "Fraud Detection/models/fraud_detection_pipeline.pkl",
-                # absolute from this file's grandparent
-                str(Path(__file__).resolve().parents[2] / "assets" / "fraud_detection_pipeline.pkl"),
-                str(Path(__file__).resolve().parents[2] / "models" / "fraud_detection_pipeline.pkl"),
+                _join_parent_safely(2, "assets", "fraud_detection_pipeline.pkl"),
+                _join_parent_safely(2, "models", "fraud_detection_pipeline.pkl"),
             ]
         )
         PCA_PIPE = _first_existing(
             [
-                env_pca,
+                secret_pca, env_pca,
                 "assets/iforest_pipeline.joblib",
                 "models/iforest_pipeline.joblib",
                 "Fraud Detection/assets/iforest_pipeline.joblib",
                 "Fraud Detection/models/iforest_pipeline.joblib",
-                str(Path(__file__).resolve().parents[2] / "assets" / "iforest_pipeline.joblib"),
-                str(Path(__file__).resolve().parents[2] / "models" / "iforest_pipeline.joblib"),
+                _join_parent_safely(2, "assets", "iforest_pipeline.joblib"),
+                _join_parent_safely(2, "models", "iforest_pipeline.joblib"),
             ]
         )
 
