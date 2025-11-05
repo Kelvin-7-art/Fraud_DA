@@ -208,17 +208,22 @@ def _lazy_run(module_name: str, func_candidates=None, file_candidates=None):
     )
 
 # ---------- Page renderers ----------
-def render_transaction_predictor():
-    _lazy_run("src.pages.transaction_predictor")
-
 def render_fraud_detection_app2():
-    # Try lower/upper module names, then fallbacks handled inside _lazy_run
+    # Try the exact module and file names used in your project
     try:
         _lazy_run("src.pages.fraud_detection_app2",
                   func_candidates=("fraud_detection_app2", "main", "run", "app", "render", "show"))
-    except Exception:
-        _lazy_run("src.pages.Fraud_Detection_App2",
-                  func_candidates=("fraud_detection_app2", "main", "run", "app", "render", "show"))
+    except ModuleNotFoundError:
+        # Fallbacks in case it’s not inside src/pages
+        _lazy_run(
+            None,
+            file_candidates=[
+                os.path.join("src", "pages", "fraud_detection_app2.py"),
+                os.path.join("src", "pages", "Fraud_Detection_App2.py"),
+                "fraud_detection_app2.py",
+                "Fraud_Detection_App2.py"
+            ]
+        )
 
 def render_fraud_detection_legacy():
     _lazy_run("src.pages.fraud_detection",
@@ -356,3 +361,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
