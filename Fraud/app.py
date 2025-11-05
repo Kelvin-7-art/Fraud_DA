@@ -1,50 +1,23 @@
-# app.py — main entry for Streamlit, resilient loaders + styled UI
-
 import os
 import sys
 import runpy
 import importlib
-import importlib.util
-from pathlib import Path
 import streamlit as st
+from streamlit_option_menu import option_menu
 
-# ---------- Optional menu dependency with fallback ----------
-try:
-    from streamlit_option_menu import option_menu as _option_menu
-    def sidebar_menu(**kwargs):
-        return _option_menu(**kwargs)
-    HAS_MENU = True
-except Exception:
-    HAS_MENU = False
-    def sidebar_menu(menu_title=None, options=(), icons=None, menu_icon=None, default_index=0, styles=None):
-        return st.sidebar.radio(menu_title or "Menu", options, index=default_index)
-
-# ---------- Safe imports for first-party pages (welcome/about) ----------
-def _safe_import_attr(mod_name, attr_name, fallback=None):
-    try:
-        mod = importlib.import_module(mod_name)
-        fn = getattr(mod, attr_name, None)
-        if callable(fn):
-            return fn
-    except ModuleNotFoundError:
-        pass
-    except Exception as e:
-        st.sidebar.warning(f"Issue importing {mod_name}.{attr_name}: {e}")
-    return fallback
-
-show_welcome_page = _safe_import_attr("src.pages.welcome", "show_welcome_page", lambda: st.markdown("## Welcome"))
-show_about_page   = _safe_import_attr("src.pages.about",   "show_about_page",   lambda: st.markdown("## About"))
+# Pages that are safe to import directly (they expose clear functions)
+from src.pages.welcome import show_welcome_page
+#from src.pages.fraud_detection import fraud_detection_app
+from src.pages.about import show_about_page
 
 # Utilities (best-effort; don't crash the app if copy fails)
-copy_models = _safe_import_attr("src.utils.copy_models", "copy_models", lambda: None)
-copy_external_notebook = _safe_import_attr("src.utils.copy_notebook", "copy_external_notebook", lambda: None)
+from src.utils.copy_models import copy_models
+from src.utils.copy_notebook import copy_external_notebook
 
-# ---------- Ensure project root on sys.path ----------
-ROOT = Path(__file__).resolve().parent
-if str(ROOT) not in sys.path:
-    sys.path.append(str(ROOT))
+# Ensure project root on sys.path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# ---------- One-time asset copy (best effort) ----------
+# Copy static assets (best-effort)
 try:
     copy_models()
 except Exception as e:
@@ -53,6 +26,7 @@ try:
     copy_external_notebook()
 except Exception as e:
     st.sidebar.warning(f"Notebook sync skipped: {e}")
+
 
 # ---------- Styling ----------
 def apply_custom_style():
@@ -129,32 +103,25 @@ def apply_custom_style():
     }
     div[role="tabpanel"] { padding: 1.5rem 0; }
 
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #0F2041; padding-top: 1rem;
-        box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
-    }
-    [data-testid="stSidebar"] label, 
-    [data-testid="stSidebar"] p,
-    [data-testid="stSidebar"] span,
-    [data-testid="stSidebar"] h2,
-    [data-testid="stSidebar"] li { color: #FFFFFF !important; }
+    /* Checkbox */
+    .stCheckbox label span { color: #1E3A8A; font-weight: 500; }
 
     /* Progress bar */
     .stProgress > div > div > div > div { background-color: #1E3A8A; }
     </style>
     """, unsafe_allow_html=True)
 
-# ---------- Robust lazy runner ----------
+
+# ---------- Robust lazy loader ----------
 def _lazy_run(module_name: str, func_candidates=None, file_candidates=None):
     """
-    Try to call a function from a module; otherwise execute a script file.
+    Try to run a callable from a module; if not found, execute a script file.
     """
     if func_candidates is None:
         func_candidates = ("transaction_predictor", "fraud_detection_app2",
                            "main", "run", "app", "render", "show")
 
-    # 1) Try importing the module
+    # 1) Try importing the module and calling a known function
     try:
         mod = importlib.import_module(module_name)
         for fname in func_candidates:
@@ -166,117 +133,78 @@ def _lazy_run(module_name: str, func_candidates=None, file_candidates=None):
     except Exception as e:
         st.warning(f"Issue importing {module_name}: {e}")
 
-    # 2) Fall back to known script file paths
+    # 2) Fall back to executing a script file
     if file_candidates is None:
+        root = os.path.dirname(os.path.abspath(__file__))
         file_candidates = [
-            # Transaction Predictor
-            ROOT / "src" / "pages" / "03_Transaction_Predictor.py",
-            ROOT / "pages" / "03_Transaction_Predictor.py",
-            ROOT / "03_Transaction_Predictor.py",
-            ROOT / "src" / "pages" / "transaction_predictor.py",
-            ROOT / "pages" / "transaction_predictor.py",
-
-            # Fraud Detection App2 (RAW/PCA)
-            ROOT / "src" / "pages" / "fraud_detection_app2.py",
-            ROOT / "src" / "pages" / "Fraud_Detection_App2.py",
-            ROOT / "pages" / "fraud_detection_app2.py",
-            ROOT / "pages" / "Fraud_Detection_App2.py",
-            ROOT / "fraud_detection_app2.py",
-            ROOT / "Fraud_Detection_App2.py",
-
-            # Legacy Fraud Detection
-            ROOT / "src" / "pages" / "fraud_detection.py",
-            ROOT / "pages" / "fraud_detection.py",
-            ROOT / "fraud_detection.py",
+            # Transaction Predictor script candidates
+            os.path.join(root, "src", "pages", "03_Transaction_Predictor.py"),
+            os.path.join(root, "pages", "03_Transaction_Predictor.py"),
+            os.path.join(root, "03_Transaction_Predictor.py"),
+            # Fraud Detection App2 script candidates
+            os.path.join(root, "src", "pages", "fraud_detection_app2.py"),
+            os.path.join(root, "src", "pages", "Fraud_Detection_App2.py"),
+            os.path.join(root, "pages", "fraud_detection_app2.py"),
+            os.path.join(root, "pages", "Fraud_Detection_App2.py"),
+            os.path.join(root, "fraud_detection_app2.py"),
+            os.path.join(root, "Fraud_Detection_App2.py"),
         ]
 
     for path in file_candidates:
-        path = Path(path)
-        if path.exists():
+        if os.path.exists(path):
             try:
-                runpy.run_path(str(path), run_name="__main__")
+                runpy.run_path(path, run_name="__main__")
                 return
             except Exception as e:
-                st.error(f"Failed to execute {path.name}: {e}")
+                st.error(f"Failed to execute {os.path.basename(path)}: {e}")
 
     st.error(
         "Could not find a runnable target.\n\n"
-        "Expected one of these:\n"
-        "• Module `src.pages.transaction_predictor` or script `03_Transaction_Predictor.py`\n"
-        "• Module `src.pages.fraud_detection_app2` or script `fraud_detection_app2.py`\n"
-        "• (Optional legacy) `src.pages.fraud_detection`"
+        "Ensure one of these exists with a callable function:\n"
+        "• `src/pages/transaction_predictor.py` (transaction_predictor/main/run/...)\n"
+        "• `src/pages/fraud_detection_app2.py` (fraud_detection_app2/main/run/...)\n"
+        "Or provide the scripts `03_Transaction_Predictor.py` / `fraud_detection_app2.py`."
     )
 
-# ---------- Page renderers ----------
+
+def render_transaction_predictor():
+    # Prefer module; fall back to script
+    # Try both common module names for safety
+    _lazy_run("src.pages.transaction_predictor")
+
+
 def render_fraud_detection_app2():
-    # Try the exact module and file names used in your project
+    # Try lower/upper module names, then script fallbacks
     try:
         _lazy_run("src.pages.fraud_detection_app2",
                   func_candidates=("fraud_detection_app2", "main", "run", "app", "render", "show"))
-    except ModuleNotFoundError:
-        # Fallbacks in case it’s not inside src/pages
-        _lazy_run(
-            None,
-            file_candidates=[
-                os.path.join("src", "pages", "fraud_detection_app2.py"),
-                os.path.join("src", "pages", "Fraud_Detection_App2.py"),
-                "fraud_detection_app2.py",
-                "Fraud_Detection_App2.py"
-            ]
-        )
+    except Exception:
+        _lazy_run("src.pages.Fraud_Detection_App2",
+                  func_candidates=("fraud_detection_app2", "main", "run", "app", "render", "show"))
 
-def render_fraud_detection_legacy():
-    _lazy_run("src.pages.fraud_detection",
-              func_candidates=("fraud_detection_app", "main", "run", "app", "render", "show"))
-
-# ---------- Presence probes (to hide missing menu items) ----------
-def _exists_any(paths):
-    for p in paths:
-        if Path(p).exists():
-            return True
-    return False
-
-HAS_TX_PRED = (
-    importlib.util.find_spec("src.pages.transaction_predictor") is not None
-) or _exists_any([
-    ROOT / "src/pages/03_Transaction_Predictor.py",
-    ROOT / "pages/03_Transaction_Predictor.py",
-    ROOT / "03_Transaction_Predictor.py",
-    ROOT / "src/pages/transaction_predictor.py",
-    ROOT / "pages/transaction_predictor.py",
-])
-
-HAS_APP2 = (
-    importlib.util.find_spec("src.pages.fraud_detection_app2") is not None
-    or importlib.util.find_spec("src.pages.Fraud_Detection_App2") is not None
-) or _exists_any([
-    ROOT / "src/pages/fraud_detection_app2.py",
-    ROOT / "src/pages/Fraud_Detection_App2.py",
-    ROOT / "pages/fraud_detection_app2.py",
-    ROOT / "pages/Fraud_Detection_App2.py",
-    ROOT / "fraud_detection_app2.py",
-    ROOT / "Fraud_Detection_App2.py",
-])
-
-HAS_LEGACY = (
-    importlib.util.find_spec("src.pages.fraud_detection") is not None
-) or _exists_any([
-    ROOT / "src/pages/fraud_detection.py",
-    ROOT / "pages/fraud_detection.py",
-    ROOT / "fraud_detection.py",
-])
 
 # ---------- Main ----------
 def main():
-    try:
-        st.set_page_config(page_title="Fraud Detection", page_icon="🛡️", layout="wide")
-    except Exception:
-        pass
-
     apply_custom_style()
 
-    # Sidebar brand header
+    # Sidebar menu
     with st.sidebar:
+        st.markdown("""
+        <style>
+        .element-container, div[data-testid="stElementContainer"], 
+        .stMarkdown div[data-testid="stMarkdownContainer"] { margin: 0 !important; padding: 0 !important; }
+
+        [data-testid="stSidebar"] {
+            background-color: #0F2041; padding-top: 1rem;
+            box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+        }
+        [data-testid="stSidebar"] > div:first-child {
+            padding-top: 1.5rem; padding-left: 1.5rem; padding-right: 1.5rem;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        # Logo / brand
         st.markdown("""
         <div style="text-align: center; margin-bottom: 20px;">
             <h2 style="color: #FFFFFF; margin-bottom: 0;">Fraud</h2>
@@ -285,29 +213,16 @@ def main():
         </div>
         """, unsafe_allow_html=True)
 
-        # Build menu options dynamically so we don't show dead entries
-        options = ["Home"]
-        icons   = ["house-fill"]
-
-        if HAS_LEGACY:
-            options.append("Fraud Detection")
-            icons.append("bar-chart-line-fill")
-
-        if HAS_APP2:
-            options.append("Fraud Detection (RAW/PCA)")
-            icons.append("graph-up")
-
-        if HAS_TX_PRED:
-            options.append("Transaction Predictor")
-            icons.append("calculator-fill")
-
-        options.append("About")
-        icons.append("info-circle-fill")
-
-        choice = sidebar_menu(
+        choice = option_menu(
             menu_title=None,
-            options=options,
-            icons=icons if HAS_MENU else None,
+            options=[
+                "Home",
+                "Fraud Detection",
+                "Fraud Detection (RAW/PCA)",   # <-- Added App2 entry
+                "Transaction Predictor",
+                "About"
+            ],
+            icons=["house-fill", "bar-chart-line-fill", "graph-up", "calculator-fill", "info-circle-fill"],
             menu_icon="menu-button-wide",
             default_index=0,
             styles={
@@ -333,7 +248,7 @@ def main():
                     "border-left": "3px solid #D4AF37",
                     "font-weight": "600",
                 },
-            } if HAS_MENU else None,
+            },
         )
 
         # Sidebar footer
@@ -348,17 +263,14 @@ def main():
     # Router
     if choice == "Home":
         show_welcome_page()
-    elif choice == "Fraud Detection" and HAS_LEGACY:
-        render_fraud_detection_legacy()
-    elif choice == "Fraud Detection (RAW/PCA)" and HAS_APP2:
+
+    elif choice == "Fraud Detection (RAW/PCA)":
         render_fraud_detection_app2()
-    elif choice == "Transaction Predictor" and HAS_TX_PRED:
+    elif choice == "Transaction Predictor":
         render_transaction_predictor()
     elif choice == "About":
         show_about_page()
-    else:
-        st.info("This page isn’t available yet.")
+
 
 if __name__ == "__main__":
     main()
-
