@@ -99,7 +99,7 @@ def show_welcome_page():
     )
 
     # --- Banner image with safe fallback ---
-    img_path = _resolve_asset("assets", "Fraud.jpg")
+    img_path = _resolve_asset("assets", "fruadde.png")
     if img_path:
         st.image(img_path, use_column_width=True)
         overlay_margin_top = "-100px"
@@ -369,3 +369,4 @@ def show_welcome_page():
         """,
         unsafe_allow_html=True,
     )
+
